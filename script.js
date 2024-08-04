@@ -1,3 +1,15 @@
+let apiKey;
+
+fetch('./config.json')
+    .then(response => response.json())
+    .then(data => {
+        apiKey = data.apiKey;
+        init();
+    })
+    .catch(error => {
+        console.error('Error loading config:', error);
+    });
+
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
@@ -6,7 +18,6 @@ const offScreenCtx = offScreenCanvas.getContext('2d');
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
-
 let processTree = {};
 let scale = 1;
 let panX = canvas.width / 2;
@@ -23,22 +34,16 @@ function drawText(ctx, x, y, name, angle) {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
     ctx.font = '16px "Segoe UI", Tahoma, Geneva, Verdana, sans-serif';
     ctx.translate(x, y);
-    if (angle > Math.PI / 2 && angle < (3 * Math.PI) / 2) {
-        ctx.rotate(angle + Math.PI);
-        ctx.textAlign = 'right';
-        ctx.fillText(name, -8, 5);
-    } else {
-        ctx.rotate(angle);
-        ctx.textAlign = 'left';
-        ctx.fillText(name, 8, 5);
-    }
+    ctx.rotate(angle > Math.PI / 2 && angle < (3 * Math.PI) / 2 ? angle + Math.PI : angle);
+    ctx.textAlign = angle > Math.PI / 2 && angle < (3 * Math.PI) / 2 ? 'right' : 'left';
+    ctx.fillText(name, angle > Math.PI / 2 && angle < (3 * Math.PI) / 2 ? -8 : 8, 5);
     ctx.restore();
 }
 
 function getColorForUsage(usagePercent) {
     const red = [255, 0, 0];
     const blue = [69, 133, 136];
-    const ratio = Math.min(usagePercent / 100, 1);
+    const ratio = Math.min(usagePercent * 1.5/ 100, 1);
 
     const r = Math.round(blue[0] * (1 - ratio) + red[0] * ratio);
     const g = Math.round(blue[1] * (1 - ratio) + red[1] * ratio);
@@ -91,16 +96,8 @@ function buildProcessTree(processes) {
 function distributeNodes(rootPids, processMap) {
     rootPids.sort((a, b) => processMap[b].weight - processMap[a].weight);
 
-    const heavyNodes = [];
-    const lightNodes = [];
-
-    rootPids.forEach(pid => {
-        if (processMap[pid].weight > 1) {
-            heavyNodes.push(pid);
-        } else {
-            lightNodes.push(pid);
-        }
-    });
+    const heavyNodes = rootPids.filter(pid => processMap[pid].weight > 1);
+    const lightNodes = rootPids.filter(pid => processMap[pid].weight <= 1);
 
     if (heavyNodes.length === 0) {
         return lightNodes;
@@ -153,7 +150,7 @@ function drawLineWithDot(ctx, x, y, usagePercent, name) {
     ctx.beginPath();
     ctx.moveTo(x - lineLength / 2, y);
     ctx.lineTo(x + lineLength / 2, y);
-    ctx.strokeStyle = 'rgb(60, 56, 54)';
+    ctx.strokeStyle = 'rgb(74, 69, 67)';
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -175,8 +172,8 @@ function drawUsageBars(ctx, systemInfo) {
 
     const cpuX = x - 150;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-    ctx.fillText(`CPU`, cpuX - 100 / 2 - 40, y + 15);
-    ctx.fillStyle = 'rgb(60, 56, 54)';
+    ctx.fillText('CPU', cpuX - 100 / 2 - 40, y + 15);
+    ctx.fillStyle = 'rgb(74, 69, 67)';
     ctx.fillRect(cpuX - 100 / 2, y, barWidth, barHeight);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
     ctx.fillRect(cpuX - 100 / 2, y, barWidth * (systemInfo.cpu_usage / 100), barHeight);
@@ -191,8 +188,8 @@ function drawUsageBars(ctx, systemInfo) {
     y = offScreenCanvas.height / 2 - 150;
     const memX = x + 150;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-    ctx.fillText(`MEM`, memX - 100 / 2 - 40, y + 15);
-    ctx.fillStyle = 'rgb(60, 56, 54)';
+    ctx.fillText('MEM', memX - 100 / 2 - 40, y + 15);
+    ctx.fillStyle = 'rgb(74, 69, 67)';
     ctx.fillRect(memX - 100 / 2, y, barWidth, barHeight);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
     ctx.fillRect(memX - 100 / 2, y, barWidth * (systemInfo.memory.percent / 100), barHeight);
@@ -226,10 +223,10 @@ function drawTextAlongArc(ctx, str, centerX, centerY, radius, startAngle, endAng
 
 function drawNetworkSmiley(ctx, x, y, networkInfo) {
     const texts = [
-        `Sent: ${networkInfo.bytes_sent} bytes`,
-        `,Received: ${networkInfo.bytes_recv} bytes`,
-        `,Packets Sent: ${networkInfo.packets_sent}`,
-        `,Packets Received: ${networkInfo.packets_recv}`,
+        `Sent: ${networkInfo.bytes_sent} bytes,`,
+        `Received: ${networkInfo.bytes_recv} bytes,`,
+        `Packets Sent: ${networkInfo.packets_sent},`,
+        `Packets Received: ${networkInfo.packets_recv}`
     ].join(' ');
 
     const startAngle = 6 * Math.PI / 4;
@@ -251,7 +248,7 @@ function drawProcessTree(ctx, processMap, rootPids, centerX, centerY, radius) {
         const y = centerY + radius * Math.sin(angle);
         drawDot(ctx, x, y, processMap[rootPid].cpu_percent);
         drawText(ctx, x, y, processMap[rootPid].name, angle);
-        const textWidth = ctx.measureText(processMap[rootPid].name).width + 30;
+        const textWidth = ctx.measureText(processMap[rootPid].name).width + 10;
         const textEndX = x + textWidth * Math.cos(angle);
         const textEndY = y + textWidth * Math.sin(angle);
 
@@ -282,19 +279,34 @@ function drawSubTree(ctx, processMap, pid, centerX, centerY, radius, parentAngle
         const y = centerY + radius * Math.sin(angle);
         const controlX = (centerX + x) / 2;
         const controlY = centerY - 50;
+        const textWidth = ctx.measureText(processMap[childPid].name).width + 10;
+        const textEndX = x + textWidth * Math.cos(angle);
+        const textEndY = y + textWidth * Math.sin(angle);
         drawDot(ctx, x, y, processMap[childPid].cpu_percent);
         drawLine(ctx, centerX, centerY, x, y, controlX, controlY, processMap[childPid].cpu_percent);
         drawText(ctx, x, y, processMap[childPid].name, angle);
-        drawSubTree(ctx, processMap, childPid, x, y, radius, angle);
+        drawSubTree(ctx, processMap, childPid, textEndX, textEndY, radius, angle);
     });
 }
 
 async function fetchSystemData() {
     try {
         const [processResponse, systemResponse] = await Promise.all([
-            fetch('http://localhost:4444/process-info'),
-            fetch('http://localhost:4444/system-info')
+            fetch('http://localhost:4444/process-info', {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`
+                }
+            }),
+            fetch('http://localhost:4444/system-info', {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`
+                }
+            })
         ]);
+
+        if (!processResponse.ok || !systemResponse.ok) {
+            throw new Error('Network response was not ok');
+        }
 
         const processData = await processResponse.json();
         const systemData = await systemResponse.json();
